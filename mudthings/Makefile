@@ -12,5 +12,5 @@ upload:
 	arduino-cli upload -p $(port) --fqbn $(fqbn) $(sketch)
 
 monitor:
-	arduino-cli monitor --config baudrate=9600 -p $(port) --fqbn $(fqbn)
+	arduino-cli monitor --config baudrate=115200 -p $(port) --fqbn $(fqbn)
 

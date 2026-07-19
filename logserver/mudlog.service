@@ -1,0 +1,13 @@
+[Unit]
+Description=mud log server
+After=network-online.target
+
+[Service]
+WorkingDirectory=/mud
+ExecStart=/mud/logserver
+Environment=MUD_LOG_PATH=/mud/log
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
