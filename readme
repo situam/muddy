@@ -1,0 +1,8 @@
+# arduino setup
+
+Install `arduino-cli`. (https://docs.arduino.cc/arduino-cli/getting-started/)
+
+Update the index: `make update-index`
+
+Compile and upload: `make compile && make upload`
+
