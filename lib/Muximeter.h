@@ -36,7 +36,7 @@ class Muximeter {
     }
 
     // val expects range 0..15
-    void selectInput(uint8_t val) {
+    void selectChannel(uint8_t val) {
       if (val < 8) {
         _selectMuxA();
       } else {
