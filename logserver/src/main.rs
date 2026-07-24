@@ -7,7 +7,7 @@ use axum::{
 use mime::TEXT_PLAIN;
 use std::{env::var, fs::OpenOptions, io::Write};
 use time_format::format_iso8601_utc;
-use tower_http::services::ServeFile;
+use tower_http::{compression::CompressionLayer, services::ServeFile};
 
 #[tokio::main]
 async fn main() {
@@ -17,7 +17,8 @@ async fn main() {
             get_service(ServeFile::new_with_mime(log_path(), &TEXT_PLAIN)).post(log),
         )
         .route("/chart", get(get_chart))
-        .route("/chart/plotly-3.6.0.min.js", get(get_plotly));
+        .route("/chart/plotly-3.6.0.min.js", get(get_plotly))
+        .layer(CompressionLayer::new().gzip(true));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:4000").await.unwrap();
     axum::serve(listener, router).await.unwrap();
