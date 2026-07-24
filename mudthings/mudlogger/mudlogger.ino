@@ -29,7 +29,6 @@ using std::array;
 
 #define N_READINGS 32 * 8
 
-#define SLEEP_INTERVAL_SECONDS 120
 // #define DEBUG_NOSLEEP
 
 // If defined, print local logs to serial
@@ -133,7 +132,8 @@ Log read_sensors() {
         }
         if (busvoltage!=0) busvoltage/=K_SAMPLE_COUNT;
 
-        uint8_t i = (r << 5) + (m << 4) + c;
+        // uint8_t i = (r << 5) + (m << 4) + c;
+        uint8_t i = (m << 7) + (c << 3) + r;
         log.readings[i] = busvoltage;
       }
 
@@ -144,12 +144,13 @@ Log read_sensors() {
   return log;
 }
 
-void format_log(String* line, Log* log) {
+int format_log(String* line, Log* log) {
   *line += "T:"; *line += (uint32_t) log->time; *line += "\t";
-  for (int i = 0; i < N_READINGS; i++) {
-    int r = i >> 5;
-    int m = (i >> 4) & 1;
-    int c = i & 31;
+  // for (int i = 0; i < N_READINGS; i++) {
+  for (int i = 0; i < 16 * 8; i++) {
+    int m = (i >> 7) & 1;
+    int c = (i >> 3) & 15;
+    int r = i & 7;
     *line += "M"; *line += m;
     *line += ":C"; *line += c;
     *line += ":R"; *line += r;
@@ -233,11 +234,14 @@ void log_wifi(Log* log) {
     HTTPClient http;
     String url = LOG_URL;
     http.begin(url.c_str());
-    http.POST(line);
+    auto code = http.POST(line);
     http.end();
 
-    Serial.println("Posted log:");
-    Serial.println(line);
+    if (code == 200) {
+      Serial.println("Posted log.");
+    } else {
+      Serial.println("Failed posting log:" + code);
+    }
 
     // TODO: How to wait properly for http to finish before sleeping?
     delay(1000);
@@ -252,7 +256,7 @@ void run() {
   log_wifi(&log);
 
   #ifndef DEBUG_NOSLEEP
-  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_SECONDS * 1000 * 1000);
+  esp_sleep_enable_timer_wakeup(120000000);
   esp_deep_sleep_start();
   #else
   delay(1000);
