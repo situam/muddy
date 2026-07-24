@@ -23,7 +23,7 @@ void setup() {
 void loop() {
   for (auto &mux : muxes) {
     for (uint8_t i=0; i<16; i++) {
-      mux.selectInput(i);
+      mux.selectChannel(i);
       delay(2); // let settle
 
       int val = analogRead(PIN_MUX_SIG);
