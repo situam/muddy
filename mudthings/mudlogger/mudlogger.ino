@@ -235,11 +235,14 @@ void log_wifi(Log* log) {
     http.begin(url.c_str());
     http.POST(line);
     http.end();
+
+    Serial.println("Posted log:");
+    Serial.println(line);
+
+    // TODO: How to wait properly for http to finish before sleeping?
+    delay(1000);
     break;
   }
-
-  Serial.println("Posted log:");
-  Serial.println(line);
 }
 
 void run() {
@@ -249,7 +252,7 @@ void run() {
   log_wifi(&log);
 
   #ifndef DEBUG_NOSLEEP
-  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_SECONDS * 1000);
+  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_SECONDS * 1000 * 1000);
   esp_deep_sleep_start();
   #else
   delay(1000);
