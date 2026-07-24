@@ -29,7 +29,11 @@ using std::array;
 
 #define N_READINGS 32 * 8
 
+#define SLEEP_INTERVAL_SECONDS 120
 // #define DEBUG_NOSLEEP
+
+// If defined, print local logs to serial
+// #define PRINT_LOGS
 
 Adafruit_INA219 ina219;
 Muximeter muximeters[] = {
@@ -64,6 +68,11 @@ struct Log {
   float readings[N_READINGS];
 };
 
+struct LogData {
+  uint32_t time;
+  uint8_t readings[N_READINGS];
+};
+
 void setup() {
   Serial.begin(115200);
   while(!Serial) { delay(100); }
@@ -94,8 +103,13 @@ void setup() {
   // ina219.setCalibration_32V_2A();    // set measurement range to 32V, 2A  (do not exceed 26V!)
   // ina219.setCalibration_32V_1A();    // set measurement range to 32V, 1A  (do not exceed 26V!)
   ina219.setCalibration_16V_400mA(); // set measurement range to 16V, 400mA
-  
+ 
+  #ifdef PRINT_LOGS
+  Serial.println("Printing local logs:");
+  print_local_logs();
+  #else
   run();
+  #endif
 }
 
 void loop() { }
@@ -130,12 +144,23 @@ Log read_sensors() {
   return log;
 }
 
-void log_local(Log* log) {
-  struct {
-    uint32_t time;
-    uint8_t readings[N_READINGS];
-  } data;
+void format_log(String* line, Log* log) {
+  *line += "T:"; *line += (uint32_t) log->time; *line += "\t";
+  for (int i = 0; i < N_READINGS; i++) {
+    int r = i >> 5;
+    int m = (i >> 4) & 1;
+    int c = i & 31;
+    *line += "M"; *line += m;
+    *line += ":C"; *line += c;
+    *line += ":R"; *line += r;
+    *line += ":";
+    *line += String(log->readings[i], 3);
+    *line += "\t";
+  }
+}
 
+void log_local(Log* log) {
+  LogData data;
   data.time = log->time;
   for (int i = 0; i < N_READINGS; i++) {
     data.readings[i] = (uint8_t) min(max(log->readings[i] * 256.0, 0.0), 255.9);
@@ -155,20 +180,46 @@ void log_local(Log* log) {
   Serial.println("Wrote local log.");
 }
 
+void print_local_logs() {
+  Serial.println("Send me something over serial to trigger printing");
+  while(!Serial.available()) {
+    delay(100);
+  }
+
+  if (!LittleFS.begin(true)) {
+    Serial.println("FS init failed :(");
+    return;
+  }
+  File file = LittleFS.open("/log", "r");
+  if (!file) {
+    Serial.println("FS open file failed :(");
+    return;
+  }
+  int size = file.available();
+  int n_logs = size / sizeof(LogData);
+  LogData data;
+  while (file.available() >= sizeof(LogData)) {
+    if (file.read((uint8_t*) &data, sizeof(LogData)) != sizeof(LogData)) {
+      Serial.println("FS file read failed :(");
+      return;
+    }
+    Serial.write((const char*) &data, sizeof(data));
+    // Log log;
+    // log.time = data.time;
+    // for (int i = 0; i < N_READINGS; i++) {
+    //   log.readings[i] = (float) data.readings[i] / 256.0;
+    // }
+    // String line = "";
+    // format_log(&line, &log);
+    // Serial.println(line);
+  }
+
+  Serial.println("Done.");
+}
+
 void log_wifi(Log* log) {
   String line = "";
-  line += "T:"; line += (uint32_t) log->time; line += "\t";
-  for (int i = 0; i < N_READINGS; i++) {
-    int r = i >> 5;
-    int m = (i >> 4) & 1;
-    int c = i & 31;
-    line += "M"; line += m;
-    line += ":C"; line += c;
-    line += ":R"; line += r;
-    line += ":";
-    line += String(log->readings[i], 3);
-    line += "\t";
-  }
+  format_log(&line, log);
 
   WiFi.begin(SSID, PWD);
   for (uint8_t i=0; i<20;i++) {
@@ -198,7 +249,7 @@ void run() {
   log_wifi(&log);
 
   #ifndef DEBUG_NOSLEEP
-  esp_sleep_enable_timer_wakeup(5000000);
+  esp_sleep_enable_timer_wakeup(SLEEP_INTERVAL_SECONDS * 1000);
   esp_deep_sleep_start();
   #else
   delay(1000);
