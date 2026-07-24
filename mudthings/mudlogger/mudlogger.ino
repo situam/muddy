@@ -4,10 +4,17 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
+#include <FS.h>
+#include <LittleFS.h>
+
+#include <sys/time.h>
+
 #include "Muximeter.h"
 
 // Defines SSID, PWD, LOG_URL
 #include "secrets.h"
+
+using std::array;
 
 #define SDA_PIN 8
 #define SCL_PIN 9 
@@ -20,9 +27,14 @@
 #define K_SAMPLE_COUNT 32
 #define K_DELAY_SETTLE_MS 10
 
+#define N_READINGS 32 * 8
+
+// #define DEBUG_NOSLEEP
+
 Adafruit_INA219 ina219;
 Muximeter muximeters[] = {
   Muximeter(1, 2, 3, 4, 5),
+  Muximeter(7, 10, 3, 4, 5),
 };
 constexpr uint8_t nMuxis = sizeof(muximeters)/sizeof(muximeters[0]);
 
@@ -47,9 +59,27 @@ namespace mux {
   }
 }
 
+struct Log {
+  uint32_t time;
+  float readings[N_READINGS];
+};
+
 void setup() {
-  Wire.begin(SDA_PIN, SCL_PIN);
   Serial.begin(115200);
+  while(!Serial) { delay(100); }
+  delay(100);
+
+  if (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
+    Serial.println("Woke up by timer.");
+  } else {
+    Serial.println("Reset.");
+    struct timeval time;
+    time.tv_sec = 0;
+    time.tv_usec = 0;
+    settimeofday(&time, NULL);
+  }
+
+  Wire.begin(SDA_PIN, SCL_PIN);
 
   mux::init();
   for (auto &muxi : muximeters) {
@@ -61,21 +91,22 @@ void setup() {
     Serial.println("INA219 not found");
     while (1);
   }
-
   // ina219.setCalibration_32V_2A();    // set measurement range to 32V, 2A  (do not exceed 26V!)
   // ina219.setCalibration_32V_1A();    // set measurement range to 32V, 1A  (do not exceed 26V!)
   ina219.setCalibration_16V_400mA(); // set measurement range to 16V, 400mA
+  
+  run();
+}
 
-  String line = "";
-  for (int8_t r=8; r>=0; r--) {
-    if (r==8) {
-      mux::disable();
-    } else {
-      mux::enable();
-      mux::selectChannel(r);
-    }
+void loop() { }
+
+Log read_sensors() {
+  Log log;
+  log.time = time(NULL);
+  for (int8_t r=7; r>=0; r--) {
+    mux::enable();
+    mux::selectChannel(r);
     delay(K_DELAY_SETTLE_MS); // let settle
-
     for (uint8_t m=0; m<nMuxis; m++) {
       for (uint8_t c=0; c<16; c++) {
         muximeters[m].selectChannel(c);
@@ -88,21 +119,56 @@ void setup() {
         }
         if (busvoltage!=0) busvoltage/=K_SAMPLE_COUNT;
 
-        line += "M"; line += m;
-        line += ":C"; line += c;
-        line += ":R"; line += r;
-        line += ":";
-        line += String(busvoltage, 3);
-        line += "\t";
+        uint8_t i = (r << 5) + (m << 4) + c;
+        log.readings[i] = busvoltage;
       }
 
       muximeters[m].disable();
       delay(K_DELAY_SETTLE_MS);
     }
   }
-  mux::disable();
+  return log;
+}
 
-  Serial.println(line);
+void log_local(Log* log) {
+  struct {
+    uint32_t time;
+    uint8_t readings[N_READINGS];
+  } data;
+
+  data.time = log->time;
+  for (int i = 0; i < N_READINGS; i++) {
+    data.readings[i] = (uint8_t) min(max(log->readings[i] * 256.0, 0.0), 255.9);
+  }
+
+  if (!LittleFS.begin(true)) {
+    Serial.println("FS init failed :(");
+    return;
+  }
+  File file = LittleFS.open("/log", "a");
+  if (!file) {
+    Serial.println("FS open file failed :(");
+    return;
+  }
+  file.write((const uint8_t*) &data, sizeof(data));
+  file.close();
+  Serial.println("Wrote local log.");
+}
+
+void log_wifi(Log* log) {
+  String line = "";
+  line += "T:"; line += (uint32_t) log->time; line += "\t";
+  for (int i = 0; i < N_READINGS; i++) {
+    int r = i >> 5;
+    int m = (i >> 4) & 1;
+    int c = i & 31;
+    line += "M"; line += m;
+    line += ":C"; line += c;
+    line += ":R"; line += r;
+    line += ":";
+    line += String(log->readings[i], 3);
+    line += "\t";
+  }
 
   WiFi.begin(SSID, PWD);
   for (uint8_t i=0; i<20;i++) {
@@ -121,8 +187,22 @@ void setup() {
     break;
   }
 
-  esp_sleep_enable_timer_wakeup(5000000);
-  esp_deep_sleep_start();
+  Serial.println("Posted log:");
+  Serial.println(line);
 }
 
-void loop() { }
+void run() {
+  auto log = read_sensors();
+
+  log_local(&log);
+  log_wifi(&log);
+
+  #ifndef DEBUG_NOSLEEP
+  esp_sleep_enable_timer_wakeup(5000000);
+  esp_deep_sleep_start();
+  #else
+  delay(1000);
+  run();
+  #endif
+}
+
