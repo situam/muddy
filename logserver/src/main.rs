@@ -48,7 +48,7 @@ async fn get_chart() -> impl IntoResponse {
 }
 
 async fn get_plotly() -> impl IntoResponse {
-    let headers = HeaderMap::from_iter([(CONTENT_TYPE, HeaderValue::from_static("text/html"))]);
+    let headers = HeaderMap::from_iter([(CONTENT_TYPE, HeaderValue::from_static("text/js"))]);
     (
         StatusCode::OK,
         headers,

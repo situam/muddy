@@ -3,59 +3,65 @@
     <head>
         <title>mudorganisms</title>
         <style>
-html {
-    height: 100%;
-}
-body {
-    display: grid;
-    place-items: center;
-    height: 100%;
-}
-#container {
-    width: 100%;
-    height: 100%;
-}
+            html {
+                height: 100%;
+            }
+            body {
+                display: grid;
+                place-items: center;
+                height: 100%;
+            }
+            #container {
+                width: 100%;
+                height: 100%;
+            }
         </style>
         <script src="./chart/plotly-3.6.0.min.js" charset="utf-8"></script>
     </head>
     <body>
         <div id="container"></div>
         <script type="module">
-
-async function main() {
-    const log = await fetch('/log').then((res) => res.text());
-    const traces = {};
-    for (const line of log.split('\n')) {
-        const parts = line.split('\t');
-        if (parts.length < 2) continue;
-        if (parts[1].startsWith('note:')) continue;
-        if (parts[1].indexOf(':') === -1) continue;
-        const time = parts[0];
-        for (const part of parts.slice(1)) {
-            const i = part.lastIndexOf(':');
-            const key = part.substring(0, i);
-            const val = Number(part.substring(i + 1));
-            if (!traces[key]) {
-                traces[key] = {
-                    x: [],
-                    y: [],
-                    name: key,
-                };
+            async function main() {
+                container.innerText = 'loading...';
+                const log = await fetch('/log').then((res) => res.text());
+                container.innerText = 'parsing...';
+                const traces = {};
+                for (const line of log.split('\n')) {
+                    const parts = line.split('\t');
+                    if (parts.length < 2) continue;
+                    if (parts[1].startsWith('note:')) continue;
+                    if (parts[1].indexOf(':') === -1) continue;
+                    const time = parts[0];
+                    for (const part of parts.slice(1)) {
+                        const i = part.lastIndexOf(':');
+                        const key = part.substring(0, i);
+                        if (key === 'T') continue;
+                        const val = Number(part.substring(i + 1));
+                        if (!traces[key]) {
+                            traces[key] = {
+                                x: [],
+                                y: [],
+                                name: key,
+                            };
+                        }
+                        traces[key].x.push(time);
+                        traces[key].y.push(val);
+                    }
+                }
+                container.innerText = '';
+                Plotly.newPlot(
+                    container,
+                    Object.values(traces),
+                    {
+                        xaxis: {  },
+                        yaxis: { title: 'voltage (V)', range: [0, 1] },
+                    },
+                    {},
+                    { responsive: true },
+                )
             }
-            traces[key].x.push(time);
-            traces[key].y.push(val);
-        }
-    }
-    Plotly.newPlot(container, Object.values(traces), {}, {}, { responsive: true })
-}
 
-main();
-
-/*
-Plotly.newPlot( container, [{
-x: [1, 2, 3, 4, 5],
-y: [1, 2, 4, 8, 16] }], {
-margin: { t: 0 } } );*/
+            main();
         </script>
     </body>
 </html>
