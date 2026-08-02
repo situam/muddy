@@ -23,6 +23,7 @@
 Adafruit_INA219 ina219;
 Muximeter muximeters[] = {
   Muximeter(1, 2, 3, 4, 5),
+  Muximeter(7, 10, 3, 4, 5),
 };
 constexpr uint8_t nMuxis = sizeof(muximeters)/sizeof(muximeters[0]);
 
