@@ -7,31 +7,61 @@
                 height: 100%;
             }
             body {
+                margin: 0;
                 display: grid;
                 place-items: center;
                 height: 100%;
             }
-            #container {
+            main {
+                display: flex;
+                flex-direction: column;
                 width: 100%;
                 height: 100%;
+            }
+            #controls {
+                padding: 8px;
+            }
+            #container {
+                flex-grow: 1;
+                width: 100%;
             }
         </style>
         <script src="./chart/plotly-3.6.0.min.js" charset="utf-8"></script>
     </head>
     <body>
-        <div id="container"></div>
+        <main>
+            <div id="controls">
+                <label for="select_m">M:</label>
+                <input id="select_m" type="text"></input>
+                <label for="select_c">C:</label>
+                <input id="select_c" type="text"></input>
+                <label for="select_r">R:</label>
+                <input id="select_r" type="text"></input>
+            </div>
+            <div id="container"></div>
+        </main>
         <script type="module">
             async function main() {
                 container.innerText = 'loading...';
                 const log = await fetch('/log').then((res) => res.text());
                 container.innerText = 'parsing...';
                 const traces = {};
+                const annotations = [];
                 for (const line of log.split('\n')) {
                     const parts = line.split('\t');
                     if (parts.length < 2) continue;
-                    if (parts[1].startsWith('note:')) continue;
-                    if (parts[1].indexOf(':') === -1) continue;
                     const time = parts[0];
+                    if (parts[1].startsWith('note:')) {
+                        const note = parts[1].split('note:')[1].trim();
+                        annotations.push({
+                            xref: 'x', x: time,
+                            yref: 'paper', y: 0, yanchor: 'top', yshift: -12,
+                            text: 'note',
+                            hovertext: note,
+                        });
+                        continue;
+                    }
+                    if (parts[1].indexOf(':') === -1) continue;
                     for (const part of parts.slice(1)) {
                         const i = part.lastIndexOf(':');
                         const key = part.substring(0, i);
@@ -49,18 +79,24 @@
                     }
                 }
                 container.innerText = '';
+                plot(traces, annotations);
+                controls.addEventListener('change', () => plot(traces, annotations));
+            }
+            function plot(traces, annotations) {
+                const data = Object.values(traces).filter((trace) =>
+                    (select_m.value === '' || trace.name.indexOf(`M${select_m.value}:`) != -1) &&
+                    (select_c.value === '' || trace.name.indexOf(`C${select_c.value}:`) != -1) &&
+                    (select_r.value === '' || (trace.name + ':').indexOf(`R${select_r.value}:`) != -1)
+                );
                 Plotly.newPlot(
                     container,
-                    Object.values(traces),
+                    data,
                     {
-                        xaxis: {  },
-                        yaxis: { title: 'voltage (V)', range: [0, 1] },
+                        yaxis: { title: { text: 'voltage (V)' }, range: [0, 1] },
+                        annotations,
                     },
-                    {},
-                    { responsive: true },
                 )
             }
-
             main();
         </script>
     </body>
